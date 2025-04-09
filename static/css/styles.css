@@ -490,6 +490,86 @@ body {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.input-icon {
+    position: relative;
+    width: 100%;
+}
+  
+.input-icon i {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #999;
+    font-size: 14px;
+}
+  
+.input-icon input {
+    padding-left: 35px !important;
+}
+  
+/* Left Icon */
+.input-icon i:first-child {
+    left: 10px;
+}
+  
+/* Right Eye Icon */
+.password-wrapper .toggle-password {
+    right: 10px;
+    left: auto;
+    cursor: pointer;
+}
+
+.remember-me {
+    /* align-self: flex-start; */
+    align-items: center;
+    margin: 8px 0 -10px 0;
+    font-size: 12px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+}
+  
+.remember-me input {
+    accent-color: #00a1ff; /* Modern browsers */
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Profile Modal Styling */
 .profile-modal {
     display: none;
@@ -832,6 +912,7 @@ body {
     border-radius: 5px;
     cursor: pointer;
     transition: all 0.3s ease;
+    font-size: 1.3rem;
 }
 
 .back-button:hover {
@@ -958,6 +1039,7 @@ body {
     font-weight: 500;
     cursor: pointer;
     transition: all 0.3s ease;
+    font-size: 1rem;
 }
 
 .control-buttons button:hover {
@@ -1042,6 +1124,7 @@ body {
     border-radius: 8px;
     border: 1px solid #323232;
     overflow-y: auto;
+    margin-top: 15px;
 }
 
 .sentence-history h4 {

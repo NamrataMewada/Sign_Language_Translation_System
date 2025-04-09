@@ -72,7 +72,6 @@ function injectRealTimeBoxes() {
   finalBox.className = "translation-text final-output";
   finalBox.innerText = "Awaiting final sentence...";
 
-
   // --- Previous Sentences Section ---
   const historyContainer = document.createElement("div");
   historyContainer.id = "allSentencesContainer";
@@ -94,6 +93,7 @@ function injectRealTimeBoxes() {
 }
 
 async function accessCamera() {
+  console.log("Camera function entered");
   const isLoggedIn = checkUserLogin();
   if (!isLoggedIn) {
     // showAlert("Please login to access the Camera!!");
@@ -112,8 +112,8 @@ async function accessCamera() {
       allowOutsideClick: false,
       allowEscapeKey: false,
       customClass: {
-        container: "swal-login-alert"
-      }
+        container: "swal-login-alert",
+      },
     }).then(() => {
       openAuthModal(); // Open login modal after confirmation
     });
@@ -122,6 +122,7 @@ async function accessCamera() {
   }
 
   try {
+    console.log("access camera try block entered");
     stopCamera();
 
     // Add the UI blocks dynamically
@@ -141,6 +142,7 @@ async function accessCamera() {
 
     translationInterval = setInterval(updateTranslation, 500);
   } catch (error) {
+    console.log("Error occurred in access camera catch block ");
     console.error("Error accessing camera:", error);
     alert(
       "Error accessing camera. Please make sure you have granted camera permissions."
@@ -157,6 +159,7 @@ async function accessCamera() {
 }
 
 function stopCamera() {
+  console.log("Stop camera is called");
   document.getElementById("cameraFeed").style.display = "none";
   document.getElementById("cameraFeed").src = "";
 
@@ -178,6 +181,10 @@ function stopCamera() {
 // function to fetch translation from flask
 async function updateTranslation() {
   try {
+    console.log(
+      "Code entered into the try block of updateTranslation function"
+    );
+
     const response = await fetch("/get_translation");
     const data = await response.json();
 
@@ -191,15 +198,51 @@ async function updateTranslation() {
     if (document.getElementById("currentSentenceText"))
       document.getElementById("currentSentenceText").innerText = currentText;
 
-    if (document.getElementById("finalText")){
-
+    if (document.getElementById("finalText")) {
       // Update only if there is a new final sentence
       if (finalText !== "Awaiting final sentence.." && finalText !== lastSentence) {
-        document.getElementById("finalText").innerText = finalText;
+        // document.getElementById("finalText").innerText = finalText;
+        // lastSentence = finalText;
+
+        //============ NEW LOGIC ============
+        const finalTextDiv = document.getElementById("finalText");
+        finalTextDiv.innerHTML = ""; // Clear previous sentence
+
+        // Split sentence into words and wrap each in a span
+        finalText.split(" ").forEach((word) => {
+          const span = document.createElement("span");
+          span.className = "translation-item";
+          span.innerText = word;
+          finalTextDiv.appendChild(span);
+          finalTextDiv.append(" "); // add space between words
+        });
+
         lastSentence = finalText;
       }
     }
+
+    // NEW: Fetch sentence history
+    fetch("/get_all_sentences")
+      .then((res) => res.json())
+      .then((historyData) => {
+        if (historyData.all_sentences) {
+          const historyList = document.getElementById("allSentencesList");
+          if (historyList) {
+            historyList.innerHTML = "";
+            historyData.all_sentences.forEach((sentence) => {
+              const li = document.createElement("li");
+              li.textContent = sentence;
+              historyList.appendChild(li);
+            });
+          }
+        }
+      })
+      .catch((err) => {
+        console.log("Error in fetching all the sentences from the backend");
+        console.error("Failed to fetch sentence history:", err);
+      });
   } catch (error) {
+    console.log("Error in catch block of update Translations");
     console.error("Error fetching the translation:", error);
   }
 }
@@ -261,12 +304,11 @@ function uploadVideo() {
       allowOutsideClick: false,
       allowEscapeKey: false,
       customClass: {
-        container: "swal-login-alert"
-      }
+        container: "swal-login-alert",
+      },
     }).then(() => {
       openAuthModal(); // Open login modal after confirmation
     });
-
   } else {
     input.onchange = (e) => {
       const file = e.target.files[0];
@@ -352,7 +394,7 @@ async function playTranslation() {
       toast: false,
       background: "#fff",
       color: "#323232",
-      showConfirmButton: true
+      showConfirmButton: true,
     });
     return;
   }
@@ -379,13 +421,13 @@ async function playTranslation() {
         icon: "error",
         title: "Error: " + data.error,
         position: "top",
-        showConfirmButton: true
+        showConfirmButton: true,
       });
       return;
     }
 
     const audio = new Audio(data.audio_url);
-    audio.play(); 
+    audio.play();
 
     // Highlighting the logic for live sentence
     let currentIndex = 0;
@@ -401,15 +443,13 @@ async function playTranslation() {
         translations[translations.length - 1].classList.remove("highlight");
       }
     }, 1000);
-    
-
 
     // === NEW LOGIC: Also play audio for previous sentences ===
     const allSentencesList = document.getElementById("allSentencesList");
 
     if (allSentencesList && allSentencesList.children.length > 0) {
       let fullHistory = Array.from(allSentencesList.children)
-        .map(li => li.innerText.trim())
+        .map((li) => li.innerText.trim())
         .join(". "); // Add period and space for natural pause
 
       // Delay playing after current audio finishes
@@ -461,13 +501,11 @@ async function translateText(inputType = "text", audioPath = null) {
       allowOutsideClick: false,
       allowEscapeKey: false,
       customClass: {
-        container: "swal-login-alert"
-      }
+        container: "swal-login-alert",
+      },
     }).then(() => {
       openAuthModal(); // Open login modal after confirmation
     });
-
-
   } else {
     const textInput = document.getElementById("textInput");
     const animationContainer = document.getElementById("animationContainer");
@@ -479,7 +517,7 @@ async function translateText(inputType = "text", audioPath = null) {
         icon: "warning",
         title: "Please enter text to translate",
         position: "top",
-        showConfirmButton: true
+        showConfirmButton: true,
       });
       return;
     }
@@ -587,8 +625,8 @@ function playAnimation() {
       allowOutsideClick: false,
       allowEscapeKey: false,
       customClass: {
-        container: "swal-login-alert"
-      }
+        container: "swal-login-alert",
+      },
     }).then(() => {
       openAuthModal(); // Open login modal after confirmation
     });
@@ -612,7 +650,7 @@ function playAnimation() {
           icon: "error",
           title: "Error" + data.error,
           position: "top",
-          showConfirmButton: true
+          showConfirmButton: true,
         });
         document.getElementById("textInput").value = "Try again!";
       } else {
@@ -659,8 +697,8 @@ function submitFeedback(event) {
       allowOutsideClick: false,
       allowEscapeKey: false,
       customClass: {
-        container: "swal-login-alert"
-      }
+        container: "swal-login-alert",
+      },
     }).then(() => {
       openAuthModal(); // Open login modal after confirmation
     });
@@ -684,7 +722,7 @@ function submitFeedback(event) {
       color: "#323232",
       timer: 2000,
       timerProgressBar: false,
-      showConfirmButton: false
+      showConfirmButton: false,
     });
     return;
   }
@@ -725,7 +763,7 @@ function submitFeedback(event) {
           position: "top",
           toast: true,
           background: "#fff",
-          timer: 2000
+          timer: 2000,
         });
         event.target.reset(); // Reset the form
       }
@@ -796,8 +834,6 @@ function loadProfileData() {
   username.value = localStorage.getItem("username") || "Unknown_User";
   email.value = localStorage.getItem("email") || "Not found email";
   newPassword.value = "";
-
-
 }
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -810,6 +846,21 @@ document.addEventListener("DOMContentLoaded", function () {
   const profileUsername = document.getElementById("profileUsername");
   const authButton = document.getElementById("authButton");
   const logoutButton = document.getElementById("logoutButton");
+
+
+  // Remember me checkbox logic :
+  const emailInput = document.getElementById("signInEmail");
+  const passwordInput = document.getElementById("signInPassword")
+
+  const rememberCheckbox = document.getElementById("rememberMe");
+
+  // Load saved email from localStorage
+  if (localStorage.getItem("rememberEmail") && localStorage.getItem("rememberPassword")) {
+    emailInput.value = localStorage.getItem("rememberEmail");
+    passwordInput.value = localStorage.getItem("rememberPassword");
+    rememberCheckbox.checked = true;
+  }
+
 
   // Function to check if the user is logged in
   function checkLoginStatus() {
@@ -910,9 +961,9 @@ document.addEventListener("DOMContentLoaded", function () {
           Swal.fire({
             icon: "success",
             title: "Account created successfully",
-            timer:2000,
+            timer: 2000,
             showConfirmButton: false,
-            position: "top"
+            position: "top",
           });
           modalContent.classList.remove("active"); // Switch to Sign In panel
         } else {
@@ -921,7 +972,7 @@ document.addEventListener("DOMContentLoaded", function () {
             icon: "error",
             title: "Account creation failed",
             text: data.error || "Unknown error",
-            timer:2000,
+            timer: 2000,
             showConfirmButton: false,
           });
         }
@@ -955,6 +1006,14 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
+    if (rememberCheckbox.checked) {
+      localStorage.setItem("rememberEmail", emailInput.value);
+      localStorage.setItem("rememberPassword",passwordInput.value )
+    } else {
+      localStorage.removeItem("rememberEmail");
+      localStorage.removeItem("rememberPassword");
+    }
+
     fetch("/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -978,7 +1037,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
           localStorage.setItem("token", data.token); // Store JWT token
           localStorage.setItem("username", data.username);
-          localStorage.setItem("email", data.email);  
+          localStorage.setItem("email", data.email);
 
           checkLoginStatus();
           authModal.classList.remove("show"); // Close modal on success
@@ -993,8 +1052,8 @@ document.addEventListener("DOMContentLoaded", function () {
             // timer: 2500,
             // showConfirmButton: true,
             customClass: {
-              container: 'swal-login-error'
-            }
+              container: "swal-login-error",
+            },
           });
         }
       })
@@ -1026,7 +1085,9 @@ document.addEventListener("DOMContentLoaded", function () {
   // Save Changes (Optional Password Update)
   saveChanges?.addEventListener("click", async function (event) {
     event.preventDefault();
-    const newUsername = document.getElementById("profileUsernameInput").value.trim();
+    const newUsername = document
+      .getElementById("profileUsernameInput")
+      .value.trim();
     const newEmail = document.getElementById("profileEmail").value.trim();
     const newPassword = document.getElementById("newPassword").value.trim();
 
@@ -1052,19 +1113,17 @@ document.addEventListener("DOMContentLoaded", function () {
     //   });
     // }
 
-
-
     try {
       const response = await fetch("/update_profile", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            username: newUsername,
-            email: newEmail,
-            password: newPassword
-            })
+        },
+        body: JSON.stringify({
+          username: newUsername,
+          email: newEmail,
+          password: newPassword,
+        }),
       });
 
       const result = await response.json();
@@ -1076,22 +1135,21 @@ document.addEventListener("DOMContentLoaded", function () {
           title: result.message,
           position: "top",
           showConfirmButton: false,
-          timer: 2000
+          timer: 2000,
         });
 
         // Update the displayed username in frontend
         document.getElementById("profileUsername").innerText = newUsername;
-        localStorage.setItem("username", newUsername)
-        localStorage.setItem("email",newEmail)
-        localStorage.setItem("password",newPassword)
-
+        localStorage.setItem("username", newUsername);
+        localStorage.setItem("email", newEmail);
+        localStorage.setItem("password", newPassword);
       } else {
         // alert("Error updating profile");
         Swal.fire({
           icon: "error",
           title: result.error || "Update failed!!",
           position: "top",
-          showConfirmButton: true
+          showConfirmButton: true,
         });
       }
     } catch (err) {
@@ -1100,7 +1158,7 @@ document.addEventListener("DOMContentLoaded", function () {
       Swal.fire({
         icon: "error",
         title: "Server Error",
-        text: err.message
+        text: err.message,
       });
     }
 
@@ -1114,4 +1172,24 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
   checkLoginStatus();
+});
+
+
+
+
+
+
+document.querySelectorAll('.toggle-password').forEach(toggle => {
+  toggle.classList.add('fa-eye-slash'); // Set initial icon
+
+  toggle.addEventListener('click', () => {
+    const input = toggle.previousElementSibling;
+    const isPassword = input.getAttribute('type') === 'password';
+
+    input.setAttribute('type', isPassword ? 'text' : 'password');
+
+    // Toggle icons
+    toggle.classList.toggle('fa-eye');
+    toggle.classList.toggle('fa-eye-slash');
+  });
 });
