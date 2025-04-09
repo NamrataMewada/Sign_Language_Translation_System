@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from flask import Flask, render_template, request, jsonify, url_for, Response, session
+from flask import Flask, render_template, request, jsonify, url_for, Response, session, copy_current_request_context
 from flask_session import Session
 import cv2
 from werkzeug.utils import secure_filename
@@ -129,8 +129,9 @@ def extract_hand_landmarks(img):
     return np.array([data_aux]) if len(data_aux) == 84 else None
 
 # ================== Saving the translated sentence in database ==================
-def save_translation_to_db(sentence):
-    user_id = session.get("user_id")
+def save_translation_to_db(user_id, sentence):
+    
+    print(f"\nSentence entered into save_db function with \nuser_id: {user_id} \nSentence: {sentence}\n")
     try :
         conn = get_db_connection()
         if conn:
@@ -145,121 +146,133 @@ def save_translation_to_db(sentence):
             conn.close()
             print(f"[DB] Saved: {sentence}")
     except Exception as e:
-        return jsonify({"error": f"Database error: {str(e)}"}), 500
+        # return jsonify({"error": f"Database error: {str(e)}"}), 500
+        print(f"[DB ERROR] Failed to save sentence: {str(e)}")
+        return
 
 
 
 # ================== Real-Time Frame Generation ==================
-def generate_frames():
+def generate_frames(user_id):
     global current_sentence, final_sentence, prev_prediction
     global hold_counter, last_hand_time, space_added, prediction_buffer
-    global final_sentences_history
+    global final_sentences_history, last_letter_added, last_added_time
     
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("Cannot open camera")
         return
 
-    while cap and cap.isOpened():
-        success, frame = cap.read()
-        if not success:
-            break
+    try:
+        while cap and cap.isOpened():
+            success, frame = cap.read()
+            if not success:
+                break
 
-        # Extract hand landmarks
-        data_np = extract_hand_landmarks(frame)
+            # Extract hand landmarks
+            data_np = extract_hand_landmarks(frame)
 
-        gesture_text = "Waiting for gesture..."
-        space_text = ""
-        display_current = current_sentence
-        display_final = final_sentence
+            gesture_text = "Waiting for gesture..."
+            space_text = ""
+            display_current = current_sentence
+            display_final = final_sentence
 
-        if data_np is not None:
-            last_hand_time = time.time()
-            space_added = False
-
-            # Prediction and buffering
-            prediction = alpha_model.predict(data_np)[0]
-            prediction_buffer.append(prediction)
-
-            # Get most common prediction and its frequency
-            most_common_pred = Counter(prediction_buffer).most_common(1)[0]
-            stable_prediction, freq = most_common_pred
-
-            # Confidence filtering
-            if freq >= confidence_threshold:
-                if stable_prediction == prev_prediction:
-                    hold_counter += 1
-                else:
-                    hold_counter = 1
-                    prev_prediction = stable_prediction
-
-                # Confirm gesture
-                if hold_counter >= hold_threshold:
-                    current_time = time.time()
-                    
-                    # Check if this is a new letter or enough time has passed since same letter was added
-                    if stable_prediction != last_letter_added or (current_time - last_added_time) > letter_repeat_cooldown:
-                        current_sentence += stable_prediction
-                        print(f"[Letter Added] Current Sentence: {current_sentence}")
-                        
-                        last_letter_added = stable_prediction
-                        last_added_time = current_time
-                        
-                    # Reset the tracking
-                    hold_counter = 0
-                    prediction_buffer.clear()
-
-                gesture_text = f"Gesture: {stable_prediction}"
-        
-        else:
-            # No hand detected
-            elapsed = time.time() - last_hand_time
-            
-            if elapsed > 3 and not space_added:
-                current_sentence += " "
-                space_text = "Space Added"
-                space_added = True
-                print(f"[Space] Current Sentence: {current_sentence}")
-                
-                # Reset duplicate letter tracking 
-
-            elif elapsed > 7:
-                if current_sentence.strip():
-                    final_sentence = current_sentence.strip()
-                    final_sentences_history.append(final_sentence)
-                    
-                    # Store the final sentence in the db
-                    save_translation_to_db(final_sentence)
-                    print(f"[Final] Final Sentence: {final_sentence}")
-
-                    # Reset for next sentence
-                    current_sentence = ""
-                    prediction_buffer.clear()
-                    hold_counter = 0
-                    space_added = False
-                    last_letter_added = ""
-
+            if data_np is not None:
                 last_hand_time = time.time()
+                space_added = False
 
-        # Draw landmarks
-        results = hands.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        if results.multi_hand_landmarks:
-            for hand_landmarks in results.multi_hand_landmarks:
-                mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                # Prediction and buffering
+                prediction = alpha_model.predict(data_np)[0]
+                prediction_buffer.append(prediction)
 
-        # Display text overlays
-        cv2.putText(frame, gesture_text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2)
-        cv2.putText(frame, space_text, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
-        cv2.putText(frame, f"Current: {display_current}", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
-        cv2.putText(frame, f"Final: {display_final}", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+                # Get most common prediction and its frequency
+                most_common_pred = Counter(prediction_buffer).most_common(1)[0]
+                stable_prediction, freq = most_common_pred
 
-        _, buffer = cv2.imencode('.jpg', frame)
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+                # Confidence filtering
+                if freq >= confidence_threshold:
+                    if stable_prediction == prev_prediction:
+                        hold_counter += 1
+                    else:
+                        hold_counter = 1
+                        prev_prediction = stable_prediction
+
+                    # Confirm gesture
+                    if hold_counter >= hold_threshold:
+                        current_time = time.time()
+                        
+                        # Check if this is a new letter or enough time has passed since same letter was added
+                        if stable_prediction != last_letter_added or (current_time - last_added_time) > letter_repeat_cooldown:
+                            current_sentence += stable_prediction
+                            print(f"[Letter Added] Current Sentence: {current_sentence}")
+                            
+                            last_letter_added = stable_prediction
+                            last_added_time = current_time
+                            
+                        # Reset the tracking
+                        hold_counter = 0
+                        prediction_buffer.clear()
+
+                    gesture_text = f"Gesture: {stable_prediction}"
+            
+            else:
+                # No hand detected
+                elapsed = time.time() - last_hand_time
+                
+                if elapsed > 3 and not space_added and not current_sentence.endswith(" "):
+                    current_sentence += " "
+                    space_text = "Space Added"
+                    space_added = True
+                    print(f"[Space] Current Sentence: {current_sentence}")
+                    
+                    # Reset duplicate letter tracking 
+
+                elif elapsed > 7:
+                    if current_sentence.strip():
+                        final_sentence = current_sentence.strip()
+                        final_sentences_history.append(final_sentence)
+                        
+                        # Store the final sentence in the db
+                        save_translation_to_db(user_id, final_sentence)
+                        print(f"[Final] Final Sentence: {final_sentence}")
+                        print(f"All sentence list: ", final_sentences_history)
+
+                        # Reset for next sentence
+                        current_sentence = ""
+                        prediction_buffer.clear()
+                        hold_counter = 0
+                        space_added = False
+                        last_letter_added = ""
+                        time.sleep(2)
+
+                    last_hand_time = time.time()
+
+            # Draw landmarks
+            results = hands.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            if results.multi_hand_landmarks:
+                for hand_landmarks in results.multi_hand_landmarks:
+                    mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
+            # Display text overlays
+            cv2.putText(frame, gesture_text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2)
+            cv2.putText(frame, space_text, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+            cv2.putText(frame, f"Current: {display_current}", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+            cv2.putText(frame, f"Final: {display_final}", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+
+            _, buffer = cv2.imencode('.jpg', frame)
+            yield (b'--frame\r\n'
+                b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+            
+    except GeneratorExit:
+        print("[Stream] Client disconnected")
+    except Exception as e:
+        print(f"[Stream Error] {str(e)}")
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+        print("[Stream] Camera released properly")
         
-    cap.release()
-    last_letter_added = ""
-    print("[Camera Stopped] Sentence history:", final_sentences_history)
+    
    
 # Upload file handler
 def get_uploaded_file(file_key):
@@ -271,7 +284,7 @@ def get_uploaded_file(file_key):
         return None, jsonify({"error": f"No selected {file_key} file"}), 400
     
     filename = secure_filename(file.filename)
-    # file_path = os.path.join(VIDEO_FOLDER if file_key == "video" else UPLOAD_FOLDER, filename)
+    
     if file_key == "video":
         file_path = os.path.join(VIDEO_FOLDER, filename)
     else:
@@ -382,7 +395,6 @@ def feedback():
 @app.route('/process_video', methods=['POST'])
 def process_video():
     user_id = session.get("user_id")  
-    print("\nUser id is : ", user_id,"\n")
     video_path, error_response, status = get_uploaded_file("video")
     if error_response:
         return error_response, status
@@ -427,7 +439,6 @@ def signup():
     password = bcrypt.generate_password_hash(data["password"]).decode("utf-8")
 
     try:
-        
         conn = get_db_connection()
         cur = conn.cursor()
         
@@ -490,8 +501,8 @@ def process_text():
     
     # Clean the text by removing special characters except space 
     text = ''.join(char for char in text if char.isalnum() or char.isspace())
-    
-    print(f"\nuser_id: {user_id},\nText: {text},\nInput_type: {input_type}, \naudio_path: {audio_path}")
+
+    # print(f"\nuser_id: {user_id},\nText: {text},\nInput_type: {input_type}, \naudio_path: {audio_path}")
 
     if not text or text == "undefined":
         return jsonify({"error": "No text provided"}), 400
@@ -643,7 +654,13 @@ def submit_feedback():
 # Video Response from camera to frontend           
 @app.route('/video_feed')
 def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    # return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    user_id = session.get("user_id")
+    @copy_current_request_context
+    def wrapped_generate():
+        return generate_frames(user_id)
+
+    return Response(wrapped_generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # Sending the translated sentence in real time to frontend for display
 @app.route('/get_translation')
