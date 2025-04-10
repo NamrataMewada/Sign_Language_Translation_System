@@ -1,3 +1,4 @@
+# ================== Imports ==================
 import os
 import numpy as np
 from flask import Flask, render_template, request, jsonify, url_for, Response, session, copy_current_request_context
@@ -16,39 +17,40 @@ from flask_bcrypt import Bcrypt
 from flask_jwt_extended import create_access_token, JWTManager
 from datetime import datetime
 
-
+# ================== Flask app intialization ==================
 app = Flask(__name__)
 
 
-app.config["JWT_SECRET_KEY"] = "your_secret_key" 
+# ================== Session ==================
+app.config["JWT_SECRET_KEY"] = "secret_key" 
 app.config['SESSION_TYPE'] = "filesystem"
 Session(app)
 
-# Hashing the passwords and accessing the token
+# ================== Hashing the passwords and accessing the token ==================
 bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
 
-# Constants
+# ================== Constants ==================
 IMG_SIZE = (224, 224)
 SEQUENCE_LENGTH = 20  # Number of frames required for prediction
 CLASS_MAP = {0: 'Accident', 1: 'Call', 2: 'Doctor', 3: 'Help', 4: 'Hot', 5: 'Lose', 6: 'Pain', 7: 'Thief'}
 
-# File Paths
+# ================== File Paths ==================
 VIDEO_FOLDER = "static/upload_media/videos"
 AUDIO_FOLDER = "static/upload_media/recorded_speech"
 EMERGENCY_SIGNS_PATH = "static/emergency_words_gif"
 PROCESSED_AUDIO_TRANSLATION = "static/translated_audio"
 
-# Creating the folders for uploads
+# ================== Creating the folders for uploads ==================
 for folder in [VIDEO_FOLDER, AUDIO_FOLDER,PROCESSED_AUDIO_TRANSLATION]:
     os.makedirs(folder, exist_ok=True)
 
 
-# Preload available emergency words
+# ==================Preload available emergency words ==================
 emergency_words = {f.split('.')[0].lower(): f for f in os.listdir(EMERGENCY_SIGNS_PATH)}
 
 
-# Emergency words model loading
+# ================== Emergency words model loading ==================
 try:
     video_model = tf.keras.models.load_model("Gesture_cnn_lstm_model.h5")
     base_model = tf.keras.applications.VGG16(weights="imagenet", include_top=False, input_shape=(224, 224, 3))
@@ -274,7 +276,7 @@ def generate_frames(user_id):
         
     
    
-# Upload file handler
+# ================== Upload file handler ==================
 def get_uploaded_file(file_key):
     if file_key not in request.files:
         return None, jsonify({"error": f"No {file_key} uploaded"}), 400
@@ -294,7 +296,7 @@ def get_uploaded_file(file_key):
     
     return file_path, None, 200 
     
-# Helper function to process video and make predictions
+# ================== Helper function to process video and make predictions ==================
 def run_model_on_video(video_path):
     if not video_model or not cnn_model:
         return "Model is not loaded."
@@ -330,7 +332,7 @@ def run_model_on_video(video_path):
     
     return CLASS_MAP.get(predicted_class, "Unknown") 
 
-# Database Connection
+# ================== Database Connection ==================
 def get_db_connection():
     try:
         return psycopg2.connect(
@@ -344,7 +346,7 @@ def get_db_connection():
         print(f"Database connection error: {e}")
         return None   
     
-# Fetching the media from the database:
+# ================== Fetching the media from the database ==================
 def fetch_media_from_db(media_type, category=None, char=None):
     conn = get_db_connection()
     if not conn:
@@ -370,6 +372,8 @@ def fetch_media_from_db(media_type, category=None, char=None):
         print("Result is none")
         return None
     
+# ======================================================================== #
+# ================== Main routing ========================================
 
 # Home page route
 @app.route('/')
@@ -391,7 +395,7 @@ def services():
 def feedback():
     return render_template('feedback.html')
 
-# Processing the video API
+# ================== Processing the video API ==================
 @app.route('/process_video', methods=['POST'])
 def process_video():
     user_id = session.get("user_id")  
@@ -430,7 +434,7 @@ def process_video():
       
     return jsonify({"result": result_text})
 
-# Signup Route
+# ================== Signup Route ==================
 @app.route("/signup", methods=["POST"])
 def signup():
     data = request.json
@@ -457,7 +461,7 @@ def signup():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
     
-# Login Route
+# ================== Login Route ==================
 @app.route("/login", methods=["POST"])
 def login():
     data = request.get_json() or {}
@@ -479,22 +483,55 @@ def login():
             return jsonify({
                 "token": access_token,
                 "username": user[1],
+                "email": email,
                 "message": "Login successful!"
             })
 
         return jsonify({"error": "Invalid credentials"}), 401
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500  # Changed to 500 for server errors
+        return jsonify({"error": str(e)}), 500  
 
     finally:
-        conn.close()  # Ensure the database connection is closed
+        conn.close()  # database connection is closed always 
 
-# Text to Sign processing
+# ================== Update the profile ==================
+@app.route("/update_profile", methods=["POST"])
+def update_profile():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    data = request.json
+    username = data.get("username")
+    email = data.get("email")
+    password = data.get("password")
+    
+    if not username or not email:
+        return jsonify({"error": "Username and email are required"}), 400
+    
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            if password:
+                hashed_password = bcrypt.generate_password_hash(data["password"]).decode('utf-8')
+                cur.execute("UPDATE users SET username = %s, email = %s, password = %s WHERE user_id = %s;""", (username, email, hashed_password, user_id))
+            else:
+                cur.execute("""
+                    UPDATE users SET username = %s, email = %s WHERE user_id = %s;""", 
+                    (username, email, user_id))
+        conn.commit()
+        return jsonify({"message": "Profile Updated successfully!"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+# ================== Text to Sign processing ==================
 @app.route('/process_text', methods=['POST'])
 def process_text():
     user_id = session.get("user_id")
-    data = request.json
+    data = request.get_json() or {}
     text = data.get("text", "").strip().lower()
     input_type = data.get("input_type", "text")
     audio_path = data.get("audio_path", None) # By default is None, when no audio file is found
@@ -559,10 +596,9 @@ def process_text():
 
     return jsonify({"result": result})
 
-# Speech to text handling
+# ================== Speech to text handling ==================
 @app.route('/speech-to-text',methods=['POST'])
 def speech_to_text():
-    user_id = session.get("user_id")
     recognizer = sr.Recognizer()
     
     with sr.Microphone() as source:
@@ -592,10 +628,10 @@ def speech_to_text():
         except sr.RequestError:
             return jsonify({"error:":"Speech Recognition Service error."}), 500
         
-# Text to speech conversion
+# ================== Text to speech conversion ==================
 @app.route('/text-to-speech', methods=['POST'])
 def text_to_speech():
-    data = request.get_json()
+    data = request.get_json() or {}
     
     # Convert to lower case to avoid duplicates
     text = data.get("text", "").strip().lower()
@@ -617,7 +653,7 @@ def text_to_speech():
     except Exception as e:
         return jsonify({"error": str(e)}), 500        
   
-# Feedback submission
+# ================== Feedback submission ==================
 @app.route("/submit-feedback", methods=["POST"])
 def submit_feedback():
     data = request.get_json()
@@ -651,10 +687,9 @@ def submit_feedback():
         if conn:
             conn.close()
  
-# Video Response from camera to frontend           
+# ================== Video Response from camera to frontend ==================          
 @app.route('/video_feed')
 def video_feed():
-    # return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
     user_id = session.get("user_id")
     @copy_current_request_context
     def wrapped_generate():
@@ -662,7 +697,7 @@ def video_feed():
 
     return Response(wrapped_generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-# Sending the translated sentence in real time to frontend for display
+# ================== Sending the translated sentence in real time to frontend for display ==================
 @app.route('/get_translation')
 def get_translation():
     return jsonify({
@@ -670,6 +705,7 @@ def get_translation():
         "current_text": current_sentence,
         "final_sentence": final_sentence})
 
+# ================== Sending all the senetnces generated by user to store and display ==================
 @app.route('/get_all_sentences')
 def get_all_sentences():
     return jsonify({
