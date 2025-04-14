@@ -122,6 +122,12 @@ async function accessCamera() {
   }
 
   try {
+    // Chcek whether the user has granted the camera permission or not
+    const permissionStatus = await navigator.permissions.query({ name: "camera" });
+
+    if (permissionStatus.state === "denied") {
+      throw new Error("Camera permission denied");
+    }
     console.log("access camera try block entered");
     stopCamera();
 
